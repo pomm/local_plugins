@@ -1,0 +1,202 @@
+// $Id$
+//
+//    File: JEventProcessor_detstudies.cc
+// Created: Tue Jan 19 09:55:05 EST 2016
+// Creator: mpatsyuk (on Darwin PATSYUKMAC.MIT.EDU 15.0.0 i386)
+//
+
+#include "JEventProcessor_detstudies.h"
+using namespace jana;
+
+// The executable should define the ROOTfile global variable. It will
+// be automatically linked when dlopen is called.
+extern TFile *ROOTfile;
+
+// Routine used to create our JEventProcessor
+#include <JANA/JApplication.h>
+#include <JANA/JFactory.h>
+extern "C"{
+void InitPlugin(JApplication *app){
+	InitJANAPlugin(app);
+	app->AddProcessor(new JEventProcessor_detstudies());
+}
+} // "C"
+
+
+//------------------
+// JEventProcessor_detstudies (Constructor)
+//------------------
+JEventProcessor_detstudies::JEventProcessor_detstudies()
+{
+
+}
+
+//------------------
+// ~JEventProcessor_detstudies (Destructor)
+//------------------
+JEventProcessor_detstudies::~JEventProcessor_detstudies()
+{
+
+}
+
+//------------------
+// init
+//------------------
+jerror_t JEventProcessor_detstudies::init(void)
+{
+	// This is called once at program startup. If you are creating
+	// and filling historgrams in this plugin, you should lock the
+	// ROOT mutex like this:
+		string locOutputFileName = "hd_root.root";
+	if(gPARMS->Exists("OUTPUT_FILENAME"))
+		gPARMS->GetParameter("OUTPUT_FILENAME", locOutputFileName);
+	
+	 japp->RootWriteLock();
+	{
+		//go to file
+		TFile* locFile = (TFile*)gROOT->FindObject(locOutputFileName.c_str());
+		if(locFile != NULL)
+			locFile->cd("");
+		else
+			gDirectory->Cd("/");
+
+		//go to directory
+		TDirectoryFile* locSubDirectory = static_cast<TDirectoryFile*>(gDirectory->Get("Independent"));
+		if(locSubDirectory == NULL) //else folder already created
+			locSubDirectory = new TDirectoryFile("Independent", "Independent");
+		locSubDirectory->cd();
+
+		dHist_IsEvent = new TH1D("IsEvent", "Is the event an event?", 2, -0.5, 1.5);
+		dHist_IsEvent->GetXaxis()->SetBinLabel(1, "False");
+		dHist_IsEvent->GetXaxis()->SetBinLabel(2, "True");
+		gDirectory->cd("..");
+	}
+	 japp->RootUnLock();
+	
+  
+
+	return NOERROR;
+}
+
+//------------------
+// brun
+//------------------
+jerror_t JEventProcessor_detstudies::brun(JEventLoop *eventLoop, int32_t runnumber)
+{
+	// This is called whenever the run number changes
+        vector<const DMCThrown*> locMCThrowns;
+	eventLoop->Get(locMCThrowns);
+
+	//Initialize Actions
+	dHistogramAction_NumReconstructedObjects.Initialize(eventLoop);
+	dHistogramAction_Reconstruction.Initialize(eventLoop);
+	dHistogramAction_EventVertex.Initialize(eventLoop);
+
+	dHistogramAction_DetectorMatching.Initialize(eventLoop);
+	dHistogramAction_DetectorMatchParams.Initialize(eventLoop);
+	dHistogramAction_Neutrals.Initialize(eventLoop);
+	dHistogramAction_DetectorPID.Initialize(eventLoop);
+
+	dHistogramAction_TrackMultiplicity.Initialize(eventLoop);
+	dHistogramAction_DetectedParticleKinematics.dFinalStatePIDs.push_back(Electron);
+	dHistogramAction_DetectedParticleKinematics.dFinalStatePIDs.push_back(Positron);
+	dHistogramAction_DetectedParticleKinematics.Initialize(eventLoop);
+
+//	dHistogramAction_ObjectMemory.dMaxNumEvents = 200000;
+//	dHistogramAction_ObjectMemory.Initialize(locEventLoop);
+
+	if(!locMCThrowns.empty())
+	{
+	        dHistogramAction_ThrownParticleKinematics.dFinalStatePIDs.push_back(Electron);
+	        dHistogramAction_ThrownParticleKinematics.dFinalStatePIDs.push_back(Positron);
+	        dHistogramAction_ThrownParticleKinematics.Initialize(eventLoop);
+		dHistogramAction_ReconnedThrownKinematics.dFinalStatePIDs.push_back(Electron);
+		dHistogramAction_ReconnedThrownKinematics.dFinalStatePIDs.push_back(Positron);
+		dHistogramAction_ReconnedThrownKinematics.Initialize(eventLoop);
+		dHistogramAction_GenReconTrackComparison.dFinalStatePIDs.push_back(Electron);
+		dHistogramAction_GenReconTrackComparison.dFinalStatePIDs.push_back(Positron);
+		dHistogramAction_GenReconTrackComparison.Initialize(eventLoop);
+
+		dCustomAction_ReconnedThrownKin_CUT.dFinalStatePIDs.push_back(Electron);
+		dCustomAction_ReconnedThrownKin_CUT.dFinalStatePIDs.push_back(Positron);
+		dCustomAction_ReconnedThrownKin_CUT.Initialize(eventLoop);
+
+		dCustomAction_ReconnedThrKin_cut2.dFinalStatePIDs.push_back(Electron);
+                dCustomAction_ReconnedThrKin_cut2.dFinalStatePIDs.push_back(Positron);
+                dCustomAction_ReconnedThrKin_cut2.Initialize(eventLoop);
+	}
+  
+	return NOERROR;
+}
+
+//------------------
+// evnt
+//------------------
+jerror_t JEventProcessor_detstudies::evnt(JEventLoop *loop, uint64_t eventnumber)
+{
+	// This is called for every event. Use of common resources like writing
+	// to a file or filling a histogram should be mutex protected. Using
+	// loop->Get(...) to get reconstructed objects (and thereby activating the
+	// reconstruction algorithm) should be done outside of any mutex lock
+	// since multiple threads may call this method at the same time.
+	// Here's an example:
+	//
+	// vector<const MyDataClass*> mydataclasses;
+	// loop->Get(mydataclasses);
+	//
+	 japp->RootWriteLock();
+	{
+		dHist_IsEvent->Fill(1);
+	}
+	 japp->RootUnLock();
+
+	 	vector<const DMCThrown*> locMCThrowns;
+	loop->Get(locMCThrowns);
+
+	//Fill reaction-independent histograms.
+	dHistogramAction_NumReconstructedObjects(loop);
+	dHistogramAction_Reconstruction(loop);
+	dHistogramAction_EventVertex(loop);
+
+	dHistogramAction_DetectorMatching(loop);
+	dHistogramAction_DetectorMatchParams(loop);
+	dHistogramAction_Neutrals(loop);
+	dHistogramAction_DetectorPID(loop);
+
+	dHistogramAction_TrackMultiplicity(loop);
+	dHistogramAction_DetectedParticleKinematics(loop);
+//	dHistogramAction_ObjectMemory(loop);
+
+	if(!locMCThrowns.empty())
+	{
+		dHistogramAction_ThrownParticleKinematics(loop);
+		dHistogramAction_ReconnedThrownKinematics(loop);
+		dHistogramAction_GenReconTrackComparison(loop);
+
+		dCustomAction_ReconnedThrownKin_CUT(loop);
+		dCustomAction_ReconnedThrKin_cut2(loop);
+	}
+
+	return NOERROR;
+}
+
+//------------------
+// erun
+//------------------
+jerror_t JEventProcessor_detstudies::erun(void)
+{
+	// This is called whenever the run number changes, before it is
+	// changed to give you a chance to clean up before processing
+	// events from the next run number.
+	return NOERROR;
+}
+
+//------------------
+// fini
+//------------------
+jerror_t JEventProcessor_detstudies::fini(void)
+{
+	// Called before program exit after event processing is finished.
+	return NOERROR;
+}
+
